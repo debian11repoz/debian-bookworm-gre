@@ -1,0 +1,19 @@
+HQ-SRV и BR-SRV
+useradd -m -s /bin/bash -u 1010 sshuser
+sudo passwd sshuser
+echo "sshuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+HQ-RTR и BR-RTR
+useradd -m -s /bin/bash net_admin
+passwd net_admin
+echo "net_admin ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+useradd -m -s /bin/bash -u 1010 sshuser
+sudo passwd sshuser
+echo "sshuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+echo "Port 2024" > /etc/ssh/sshd_config
+echo "AllowUsers sshuser" > /etc/ssh/sshd_config
+echo "MaxAuthTries 2" > /etc/ssh/sshd_config
+echo "Banner /etc/ssh/banner.txt" > /etc/ssh/sshd_config
+echo "Authorized access only" > /etc/ssh/banner.txt
+systemctl restart ssh*

@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# Проверка на запуск от root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Этот скрипт должен запускаться с правами root!" >&2
+    exit 1
+fi
+
+echo "Устанавливаем BIND9..."
+apt update
+apt install -y bind9 bind9utils
+
+echo "Настраиваем /etc/bind/named.conf.options..."
+cat > /etc/bind/named.conf.options << 'EOF'
+options {
+        directory "/var/cache/bind";
+        allow-recursion { any; };
+        forwarders { 8.8.8.8; };
+        dnssec-validation auto;
+        listen-on { 127.0.0.1; 192.168.100.2; };
+};
+EOF
+
+echo "Настраиваем /etc/bind/named.conf.local..."
+cat > /etc/bind/named.conf.local << 'EOF'
+zone "au-team.irpo" {
+        type master;
+        file "/etc/bind/db.au-team.irpo";
+};
+
+zone "168.192.in-addr.arpa" {
+        type master;
+        file "/etc/bind/db.168.192";
+};
+EOF
+
+echo "Создаем прямую зону /etc/bind/db.au-team.irpo..."
+cat > /etc/bind/db.au-team.irpo << 'EOF'
+$TTL    1d
+$ORIGIN au-team.irpo.
+@       IN      SOA     ns      admin (
+        2025010100      ; Serial
+        1h              ; Refresh
+        1m              ; Retry
+        1d              ; Expire
+        1d              ; TTL
+)
+@       IN      NS      ns
+ns      IN      A       192.168.100.2
+hq-srv  IN      CNAME   ns
+hq-rtr  IN      A       192.168.100.1
+hq-rtr  IN      A       192.168.200.1
+hq-rtr  IN      A       192.168.99.1
+br-rtr  IN      A       192.168.3.1
+hq-cli  IN      A       192.168.200.6
+br-srv  IN      A       192.168.3.2
+moodle  IN      CNAME   hq-rtr
+wiki    IN      CNAME   hq-rtr
+EOF
+
+echo "Создаем обратную зону /etc/bind/db.168.192..."
+cat > /etc/bind/db.168.192 << 'EOF'
+$TTL    2d
+$ORIGIN 168.192.in-addr.arpa.
+@       IN      SOA     ns.au-team.irpo admin.au-team.irpo. (
+                        2025020820      ; Serial
+                        1d              ; Refresh
+                        1h              ; Retry
+                        1d              ; Expire
+                        1d )            ; Negative Cache TTL
+;
+@       IN      NS      ns.au-team.irpo.
+6.200   IN      PTR     hq-cli.au-team.irpo.
+2.100   IN      PTR     hq-srv.au-team.irpo.
+1.100   IN      PTR     hq-rtr.au-team.irpo.
+1.200   IN      PTR     hq-rtr.au-team.irpo.
+1.99    IN      PTR     hq-rtr.au-team.irpo.
+EOF
+
+echo "Проверяем конфигурацию..."
+named-checkconf
+named-checkzone au-team.irpo /etc/bind/db.au-team.irpo
+named-checkzone 168.192.in-addr.arpa /etc/bind/db.168.192
+
+echo "Перезапускаем BIND9..."
+systemctl restart bind9
+
+echo "Проверяем статус службы..."
+systemctl status bind9 --no-pager
+
+echo "Настройка DNS-сервера завершена!"
+echo "Для проверки используйте команды:"
+echo "dig @192.168.100.2 hq-rtr.au-team.irpo"
+echo "dig @192.168.100.2 -x 192.168.100.1"
